@@ -143,6 +143,7 @@ class ChangePasswordSerializer(serializers.Serializer):
 
         return user
 
+
 class UserManagementSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -155,6 +156,7 @@ class UserManagementSerializer(serializers.ModelSerializer):
             'last_name',
             'phone',
             'role',
+            'client',
             'is_active',
             'date_joined',
         ]
@@ -164,3 +166,29 @@ class UserManagementSerializer(serializers.ModelSerializer):
             'username',
             'date_joined',
         ]
+
+    def validate_client(self, value):
+        if value and not value.is_active:
+            raise serializers.ValidationError(
+                "Cannot assign an inactive company."
+            )
+
+        return value
+
+    def validate(self, attrs):
+        role = attrs.get(
+            'role',
+            self.instance.role if self.instance else None
+        )
+
+        client = attrs.get(
+            'client',
+            self.instance.client if self.instance else None
+        )
+
+        if role != User.Role.CLIENT and client is not None:
+            raise serializers.ValidationError({
+                'client': 'Only Client users can be assigned to a company.'
+            })
+
+        return attrs

@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, UserManager
+from clients.models import Client
 
 
 class CustomUserManager(UserManager):
@@ -36,6 +37,13 @@ class User(AbstractUser):
         blank=True,
         null=True
     )
+    client = models.ForeignKey(
+    Client,
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name='users'
+)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
