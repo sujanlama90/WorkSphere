@@ -1,7 +1,10 @@
 from rest_framework.viewsets import ModelViewSet
-from .models import Task, Comment,TaskAttachment,TaskActivity
-from .serializers import TaskSerializer,CommentSerializer,TaskAttachmentSerializer,TaskActivitySerializer
-from .permissions import TaskPermission,CommentPermission,TaskAttachmentPermission,TaskActivityPermission
+from .models import Task, Comment, TaskAttachment, TaskActivity
+from notifications.models import Notification
+from .serializers import (TaskSerializer,CommentSerializer,TaskAttachmentSerializer,TaskActivitySerializer)
+from .permissions import ( TaskPermission,CommentPermission,TaskAttachmentPermission,TaskActivityPermission)
+from accounts.models import User
+
 
 class TaskViewSet(ModelViewSet):
 
@@ -43,6 +46,17 @@ class TaskViewSet(ModelViewSet):
             description=f'Task "{task.title}" was created.'
         )
 
+        # Notify assigned Employee
+        if task.assigned_to and task.assigned_to.is_active:
+
+            Notification.objects.create(
+                recipient=task.assigned_to,
+                actor=self.request.user,
+                title="New Task Assigned",
+                message=f"A new task '{task.title}' has been assigned to you.",
+                notification_type=Notification.NotificationType.TASK
+            )
+
     def perform_update(self, serializer):
 
         task = self.get_object()
@@ -63,6 +77,7 @@ class TaskViewSet(ModelViewSet):
             'due_date': task.due_date,
         }
 
+        # Create Task Activity History
         for field in old_values:
 
             if old_values[field] != new_values[field]:
@@ -78,6 +93,61 @@ class TaskViewSet(ModelViewSet):
                     )
                 )
 
+        # Notify newly assigned Employee
+        old_assigned_to = old_values['assigned_to']
+        new_assigned_to = new_values['assigned_to']
+
+        if (
+            new_assigned_to
+            and new_assigned_to != old_assigned_to
+            and new_assigned_to.is_active
+        ):
+
+            Notification.objects.create(
+                recipient=new_assigned_to,
+                actor=self.request.user,
+                title="New Task Assigned",
+                message=f"A task '{task.title}' has been assigned to you.",
+                notification_type=Notification.NotificationType.TASK
+            )
+
+        # Notify when Task Status changes
+        if old_values['status'] != new_values['status']:
+
+            # Get all active Admins
+            admins = User.objects.filter(
+                role=User.Role.ADMIN,
+                is_active=True
+            )
+
+            recipients = list(admins)
+
+            # Add Task Creator and Project Manager
+            recipients.extend([
+                task.created_by,
+                task.project.project_manager
+            ])
+
+            # Remove duplicates and exclude actor
+            unique_recipients = {
+                user.id: user
+                for user in recipients
+                if user.is_active and user != self.request.user
+            }
+
+            # Create Notifications
+            for recipient in unique_recipients.values():
+
+                Notification.objects.create(
+                    recipient=recipient,
+                    actor=self.request.user,
+                    title="Task Status Updated",
+                    message=(
+                        f"Task '{task.title}' status changed "
+                        f"to {task.status}."
+                    ),
+                    notification_type=Notification.NotificationType.TASK
+                )
 
 class CommentViewSet(ModelViewSet):
 
@@ -108,7 +178,59 @@ class CommentViewSet(ModelViewSet):
         return Comment.objects.none()
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+
+        comment = serializer.save(
+            user=self.request.user
+        )
+
+        task = comment.task
+
+        # Get all active Admins
+        admins = User.objects.filter(
+            role=User.Role.ADMIN,
+            is_active=True
+        )
+
+        recipients = list(admins)
+
+        # Add Project Manager
+        recipients.append(task.project.project_manager)
+
+        # Add Task Creator
+        recipients.append(task.created_by)
+
+        # Add assigned Employee
+        if task.assigned_to:
+            recipients.append(task.assigned_to)
+
+        # Add active Client Users
+        client_users = User.objects.filter(
+            client=task.project.client,
+            role=User.Role.CLIENT,
+            is_active=True
+        )
+
+        recipients.extend(client_users)
+
+        # Remove duplicates and exclude comment author
+        unique_recipients = {
+            user.id: user
+            for user in recipients
+            if user.is_active and user != self.request.user
+        }
+
+        # Create Notifications
+        for recipient in unique_recipients.values():
+
+            Notification.objects.create(
+                recipient=recipient,
+                actor=self.request.user,
+                title="New Task Comment",
+                message=(
+                    f"A new comment was added to task '{task.title}'."
+                ),
+                notification_type=Notification.NotificationType.COMMENT
+            )
 
 
 class TaskAttachmentViewSet(ModelViewSet):
