@@ -1,4 +1,6 @@
 from rest_framework.viewsets import ModelViewSet
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from .models import Task, Comment, TaskAttachment, TaskActivity
 from notifications.models import Notification
 from .serializers import (TaskSerializer,CommentSerializer,TaskAttachmentSerializer,TaskActivitySerializer)
@@ -10,6 +12,35 @@ class TaskViewSet(ModelViewSet):
 
     serializer_class = TaskSerializer
     permission_classes = [TaskPermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        'project',
+        'assigned_to',
+        'status',
+        'priority',
+        'due_date',
+    ]
+
+    search_fields = [
+        'title',
+        'description',
+    ]
+
+    ordering_fields = [
+        'title',
+        'status',
+        'priority',
+        'due_date',
+        'created_at',
+        'updated_at',
+    ]
+
+    ordering = ['-created_at']
 
     def get_queryset(self):
 
@@ -153,6 +184,30 @@ class CommentViewSet(ModelViewSet):
 
     serializer_class = CommentSerializer
     permission_classes = [CommentPermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        'task',
+        'user',
+        'created_at',
+    ]
+
+    search_fields = [
+        'message',
+        'task__title',
+        'user__username',
+    ]
+
+    ordering_fields = [
+        'created_at',
+        'updated_at',
+    ]
+
+    ordering = ['-created_at']
 
     def get_queryset(self):
         user = self.request.user
@@ -237,6 +292,29 @@ class TaskAttachmentViewSet(ModelViewSet):
 
     serializer_class = TaskAttachmentSerializer
     permission_classes = [TaskAttachmentPermission]
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        'task',
+        'uploaded_by',
+        'uploaded_at',
+    ]
+
+    search_fields = [
+        'task__title',
+        'uploaded_by__username',
+        'file',
+    ]
+
+    ordering_fields = [
+        'uploaded_at',
+    ]
+
+    ordering = ['-uploaded_at']
 
     def get_queryset(self):
         user = self.request.user
@@ -262,7 +340,51 @@ class TaskAttachmentViewSet(ModelViewSet):
         return TaskAttachment.objects.none()
 
     def perform_create(self, serializer):
-        serializer.save(uploaded_by=self.request.user)
+
+        attachment = serializer.save(
+            uploaded_by=self.request.user
+        )
+
+        task = attachment.task
+
+        # Get all active Admins
+        admins = User.objects.filter(
+            role=User.Role.ADMIN,
+            is_active=True
+        )
+
+        recipients = list(admins)
+
+        # Add Project Manager
+        recipients.append(task.project.project_manager)
+
+        # Add Task Creator
+        recipients.append(task.created_by)
+
+        # Add assigned Employee
+        if task.assigned_to:
+            recipients.append(task.assigned_to)
+
+        # Remove duplicates and exclude uploader
+        unique_recipients = {
+            user.id: user
+            for user in recipients
+            if user.is_active and user != self.request.user
+        }
+
+        # Create Notifications
+        for recipient in unique_recipients.values():
+
+            Notification.objects.create(
+                recipient=recipient,
+                actor=self.request.user,
+                title="New Task Attachment",
+                message=(
+                    f"A new file was uploaded to task '{task.title}'."
+                ),
+                notification_type=Notification.NotificationType.TASK
+            )
+
 
 
 class TaskActivityViewSet(ModelViewSet):
@@ -271,6 +393,31 @@ class TaskActivityViewSet(ModelViewSet):
     permission_classes = [TaskActivityPermission]
 
     http_method_names = ['get', 'head', 'options']
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    filterset_fields = [
+        'task',
+        'user',
+        'action',
+        'created_at',
+    ]
+
+    search_fields = [
+        'action',
+        'description',
+        'task__title',
+        'user__username',
+    ]
+
+    ordering_fields = [
+        'created_at',
+    ]
+
+    ordering = ['-created_at']
 
     def get_queryset(self):
 
