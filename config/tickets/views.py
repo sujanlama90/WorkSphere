@@ -1,15 +1,41 @@
 from rest_framework.viewsets import ModelViewSet
-
-from .models import Ticket,TicketComment,TicketAttachment,User
-from .serializers import TicketSerializer,TicketCommentSerializer,TicketAttachmentSerializer
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
+from .models import Ticket,TicketComment,TicketAttachment,User,TicketPrioritySetting
+from .serializers import TicketSerializer,TicketCommentSerializer,TicketAttachmentSerializer,TicketPrioritySettingSerializer
 from .permissions import TicketPermission,TicketCommentPermission,TicketAttachmentPermission
 from notifications.models import Notification
-
+from datetime import timedelta
+from django.utils import timezone
 
 class TicketViewSet(ModelViewSet):
 
     serializer_class = TicketSerializer
     permission_classes = [TicketPermission]
+    filterset_fields = [
+        'project',
+        'created_by',
+        'assigned_to',
+        'status',
+        'priority',
+    ]
+
+    search_fields = [
+        'title',
+        'description',
+    ]
+
+    ordering_fields = [
+        'title',
+        'status',
+        'priority',
+        'created_at',
+        'updated_at',
+    ]
+
+    ordering = ['-created_at']
 
     def get_queryset(self):
 
@@ -77,14 +103,44 @@ class TicketViewSet(ModelViewSet):
                     notification_type=Notification.NotificationType.TICKET
                 )
 
+    
     def perform_update(self, serializer):
 
         old_ticket = self.get_object()
 
         old_assigned_to = old_ticket.assigned_to
         old_status = old_ticket.status
+        old_priority = old_ticket.priority
 
-        ticket = serializer.save()
+        # Check whether priority has changed
+        new_priority = serializer.validated_data.get(
+            'priority',
+            old_priority
+        )
+
+        # If priority changes, calculate a new deadline
+        if new_priority != old_priority:
+
+            try:
+                priority_setting = TicketPrioritySetting.objects.get(
+                    priority=new_priority
+                )
+
+            except TicketPrioritySetting.DoesNotExist:
+                raise serializers.ValidationError({
+                    'priority': 'Deadline setting for this priority is not configured.'
+                })
+
+            new_deadline = timezone.now() + timedelta(
+                hours=priority_setting.deadline_hours
+            )
+
+            ticket = serializer.save(
+                deadline_at=new_deadline
+            )
+
+        else:
+            ticket = serializer.save()
 
         new_assigned_to = ticket.assigned_to
         new_status = ticket.status
@@ -131,10 +187,29 @@ class TicketViewSet(ModelViewSet):
                 )
 
 
+
 class TicketCommentViewSet(ModelViewSet):
 
     serializer_class = TicketCommentSerializer
     permission_classes = [TicketCommentPermission]
+    filterset_fields = [
+        'ticket',
+        'user',
+        'created_at',
+    ]
+
+    search_fields = [
+        'message',
+        'ticket__title',
+        'user__username',
+    ]
+
+    ordering_fields = [
+        'created_at',
+        'updated_at',
+    ]
+
+    ordering = ['-created_at']
 
     def get_queryset(self):
 
@@ -223,6 +298,24 @@ class TicketAttachmentViewSet(ModelViewSet):
     serializer_class = TicketAttachmentSerializer
     permission_classes = [TicketAttachmentPermission]
 
+    filterset_fields = [
+        'ticket',
+        'uploaded_by',
+        'uploaded_at',
+    ]
+
+    search_fields = [
+        'ticket__title',
+        'uploaded_by__username',
+        'file',
+    ]
+
+    ordering_fields = [
+        'uploaded_at',
+    ]
+
+    ordering = ['-uploaded_at']
+
     def get_queryset(self):
         user = self.request.user
 
@@ -251,3 +344,37 @@ class TicketAttachmentViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
+
+
+class TicketPrioritySettingListView(generics.ListAPIView):
+
+    serializer_class = TicketPrioritySettingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+
+        if self.request.user.role != 'ADMIN':
+            raise PermissionDenied(
+                "Only Admin can view priority settings."
+            )
+
+        return TicketPrioritySetting.objects.all()
+
+
+class TicketPrioritySettingUpdateView(generics.UpdateAPIView):
+
+    serializer_class = TicketPrioritySettingSerializer
+    permission_classes = [IsAuthenticated]
+
+    queryset = TicketPrioritySetting.objects.all()
+
+    http_method_names = ['patch', 'put', 'head', 'options']
+
+    def get_object(self):
+
+        if self.request.user.role != 'ADMIN':
+            raise PermissionDenied(
+                "Only Admin can update priority settings."
+            )
+
+        return super().get_object()

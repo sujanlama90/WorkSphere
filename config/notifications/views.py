@@ -12,6 +12,26 @@ class NotificationViewSet(ModelViewSet):
 
     http_method_names = ['get', 'patch', 'head', 'options']
 
+    filterset_fields = [
+        'notification_type',
+        'is_read',
+        'created_at',
+    ]
+
+    search_fields = [
+        'title',
+        'message',
+        'actor__username',
+    ]
+
+    ordering_fields = [
+        'created_at',
+        'notification_type',
+        'is_read',
+    ]
+
+    ordering = ['-created_at']
+
     def get_queryset(self):
         return Notification.objects.filter(
             recipient=self.request.user

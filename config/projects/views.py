@@ -6,6 +6,7 @@ from .models import Project
 from .serializers import ProjectSerializer
 from .permissions import ProjectPermission
 from notifications.models import Notification
+from audit_logs.utils import create_audit_log
 
 
 class ProjectViewSet(ModelViewSet):
@@ -80,6 +81,15 @@ class ProjectViewSet(ModelViewSet):
 
         project = serializer.save()
 
+        # Create Audit Log
+        create_audit_log(
+            request=self.request,
+            action='CREATE',
+            instance=project,
+            description=f"Created project '{project.name}'."
+        )
+
+        # Send Notifications
         recipients = [project.project_manager]
 
         employees = project.employees.filter(
@@ -106,3 +116,27 @@ class ProjectViewSet(ModelViewSet):
                 ),
                 notification_type=Notification.NotificationType.PROJECT
             )
+
+    def perform_update(self, serializer):
+
+        project = serializer.save()
+
+        # Create Audit Log
+        create_audit_log(
+            request=self.request,
+            action='UPDATE',
+            instance=project,
+            description=f"Updated project '{project.name}'."
+        )
+
+    def perform_destroy(self, instance):
+
+        # Create Audit Log before deleting project
+        create_audit_log(
+            request=self.request,
+            action='DELETE',
+            instance=instance,
+            description=f"Deleted project '{instance.name}'."
+        )
+
+        super().perform_destroy(instance)

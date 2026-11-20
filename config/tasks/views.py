@@ -1,11 +1,23 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
+
 from .models import Task, Comment, TaskAttachment, TaskActivity
 from notifications.models import Notification
-from .serializers import (TaskSerializer,CommentSerializer,TaskAttachmentSerializer,TaskActivitySerializer)
-from .permissions import ( TaskPermission,CommentPermission,TaskAttachmentPermission,TaskActivityPermission)
+from .serializers import (
+    TaskSerializer,
+    CommentSerializer,
+    TaskAttachmentSerializer,
+    TaskActivitySerializer
+)
+from .permissions import (
+    TaskPermission,
+    CommentPermission,
+    TaskAttachmentPermission,
+    TaskActivityPermission
+)
 from accounts.models import User
+from audit_logs.utils import create_audit_log
 
 
 class TaskViewSet(ModelViewSet):
@@ -87,6 +99,14 @@ class TaskViewSet(ModelViewSet):
                 message=f"A new task '{task.title}' has been assigned to you.",
                 notification_type=Notification.NotificationType.TASK
             )
+
+        # Create Audit Log
+        create_audit_log(
+            request=self.request,
+            action='CREATE',
+            instance=task,
+            description=f"Created task '{task.title}'."
+        )
 
     def perform_update(self, serializer):
 
@@ -179,6 +199,27 @@ class TaskViewSet(ModelViewSet):
                     ),
                     notification_type=Notification.NotificationType.TASK
                 )
+
+        # Create Audit Log
+        create_audit_log(
+            request=self.request,
+            action='UPDATE',
+            instance=task,
+            description=f"Updated task '{task.title}'."
+        )
+
+    def perform_destroy(self, instance):
+
+        # Create Audit Log before deleting Task
+        create_audit_log(
+            request=self.request,
+            action='DELETE',
+            instance=instance,
+            description=f"Deleted task '{instance.title}'."
+        )
+
+        super().perform_destroy(instance)
+
 
 class CommentViewSet(ModelViewSet):
 
@@ -287,6 +328,36 @@ class CommentViewSet(ModelViewSet):
                 notification_type=Notification.NotificationType.COMMENT
             )
 
+        # Create Audit Log
+        create_audit_log(
+            request=self.request,
+            action='CREATE',
+            instance=comment,
+            description=f"Added comment to task '{task.title}'."
+        )
+
+    def perform_update(self, serializer):
+
+        comment = serializer.save()
+
+        create_audit_log(
+            request=self.request,
+            action='UPDATE',
+            instance=comment,
+            description=f"Updated comment on task '{comment.task.title}'."
+        )
+
+    def perform_destroy(self, instance):
+
+        create_audit_log(
+            request=self.request,
+            action='DELETE',
+            instance=instance,
+            description=f"Deleted comment from task '{instance.task.title}'."
+        )
+
+        super().perform_destroy(instance)
+
 
 class TaskAttachmentViewSet(ModelViewSet):
 
@@ -385,6 +456,24 @@ class TaskAttachmentViewSet(ModelViewSet):
                 notification_type=Notification.NotificationType.TASK
             )
 
+        # Create Audit Log
+        create_audit_log(
+            request=self.request,
+            action='CREATE',
+            instance=attachment,
+            description=f"Uploaded attachment to task '{task.title}'."
+        )
+
+    def perform_destroy(self, instance):
+
+        create_audit_log(
+            request=self.request,
+            action='DELETE',
+            instance=instance,
+            description=f"Deleted attachment from task '{instance.task.title}'."
+        )
+
+        super().perform_destroy(instance)
 
 
 class TaskActivityViewSet(ModelViewSet):

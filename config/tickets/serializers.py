@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import Ticket,TicketComment,TicketAttachment
+from .models import Ticket,TicketComment,TicketAttachment,TicketPrioritySetting
+from datetime import timedelta
+from django.utils import timezone
 from accounts.models import User
 
 
@@ -30,6 +32,7 @@ class TicketSerializer(serializers.ModelSerializer):
             'assigned_to',
             'status',
             'priority',
+            'deadline_at',
             'created_at',
             'updated_at',
         ]
@@ -37,10 +40,29 @@ class TicketSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             'created_by',
+            'deadline_at',
             'created_at',
             'updated_at',
         ]
 
+    def create(self, validated_data):
+
+        priority = validated_data.get(
+            'priority',
+            Ticket.Priority.MEDIUM
+        )
+
+        priority_setting = TicketPrioritySetting.objects.get(
+            priority=priority
+        )
+
+        deadline = timezone.now() + timedelta(
+            hours=priority_setting.deadline_hours
+        )
+
+        validated_data['deadline_at'] = deadline
+
+        return super().create(validated_data)
 
     def validate(self, attrs):
 
@@ -57,13 +79,13 @@ class TicketSerializer(serializers.ModelSerializer):
         )
 
         user = request.user
-        
+
         if user.role == User.Role.CLIENT and 'assigned_to' in attrs:
             if assigned_to is not None:
                 raise serializers.ValidationError({
                     'assigned_to': 'Only Admin or Project Manager can assign tickets.'
                 })
-            
+
         # Client can create tickets only for own company projects
         if user.role == User.Role.CLIENT:
             if user.client is None or project.client != user.client:
@@ -93,8 +115,6 @@ class TicketSerializer(serializers.ModelSerializer):
                     })
 
         return attrs
-
-
 
 class TicketCommentSerializer(serializers.ModelSerializer):
 
@@ -231,3 +251,23 @@ class TicketAttachmentSerializer(serializers.ModelSerializer):
             })
 
         return attrs
+
+class TicketPrioritySettingSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = TicketPrioritySetting
+
+        fields = [
+            'id',
+            'priority',
+            'deadline_hours',
+            'created_at',
+            'updated_at',
+        ]
+
+        read_only_fields = [
+            'id',
+            'priority',
+            'created_at',
+            'updated_at',
+        ]

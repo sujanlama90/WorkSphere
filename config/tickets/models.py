@@ -2,6 +2,34 @@ from django.db import models
 from accounts.models import User
 from projects.models import Project
 
+
+class TicketPrioritySetting(models.Model):
+
+    class Priority(models.TextChoices):
+        LOW = 'LOW', 'Low'
+        MEDIUM = 'MEDIUM', 'Medium'
+        HIGH = 'HIGH', 'High'
+        URGENT = 'URGENT', 'Urgent'
+
+    priority = models.CharField(
+        max_length=10,
+        choices=Priority.choices,
+        unique=True
+    )
+
+    deadline_hours = models.PositiveIntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['deadline_hours']
+
+    def __str__(self):
+        return f"{self.priority} - {self.deadline_hours} hours"
+
+
 class Ticket(models.Model):
 
     class Status(models.TextChoices):
@@ -50,6 +78,11 @@ class Ticket(models.Model):
         max_length=10,
         choices=Priority.choices,
         default=Priority.MEDIUM
+    )
+
+    deadline_at = models.DateTimeField(
+        null=True,
+        blank=True
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
