@@ -4,7 +4,6 @@ from .models import Task
 from accounts.models import User
 from .models import Task, Comment, TaskAttachment,TaskActivity
 
-
 class TaskSerializer(serializers.ModelSerializer):
 
     assigned_to = serializers.PrimaryKeyRelatedField(
@@ -42,6 +41,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
 
         request = self.context.get('request')
+        user = request.user if request else None
 
         project = attrs.get(
             'project',
@@ -68,9 +68,10 @@ class TaskSerializer(serializers.ModelSerializer):
 
         # Project Manager can only create tasks in own projects
         if (
-            request
-            and request.user.role == User.Role.PROJECT_MANAGER
-            and project.project_manager != request.user
+            user
+            and user.role == User.Role.PROJECT_MANAGER
+            and project
+            and project.project_manager != user
         ):
             raise serializers.ValidationError({
                 'project': 'You can only create tasks in your own projects.'
@@ -93,6 +94,51 @@ class TaskSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'due_date': 'Due date cannot be in the past.'
                 })
+
+        # Task status workflow
+        if self.instance and 'status' in attrs:
+
+            old_status = self.instance.status
+            new_status = attrs['status']
+
+            # Employee workflow
+            if user and user.role == User.Role.EMPLOYEE:
+
+                allowed_transitions = {
+                    Task.Status.TODO: [
+                        Task.Status.IN_PROGRESS
+                    ],
+                    Task.Status.IN_PROGRESS: [
+                        Task.Status.IN_REVIEW
+                    ],
+                }
+
+                allowed_statuses = allowed_transitions.get(
+                    old_status, []
+                )
+
+                if new_status not in allowed_statuses:
+                    raise serializers.ValidationError({
+                        'status': 'You can only move TODO to IN_PROGRESS and IN_PROGRESS to IN_REVIEW.'
+                    })
+
+            # Project Manager review workflow
+            elif user and user.role == User.Role.PROJECT_MANAGER:
+
+                if old_status == Task.Status.IN_REVIEW:
+
+                    if new_status not in [
+                        Task.Status.COMPLETED,
+                        Task.Status.IN_PROGRESS
+                    ]:
+                        raise serializers.ValidationError({
+                            'status': 'You can only approve or reject a task under review.'
+                        })
+
+                elif new_status == Task.Status.COMPLETED:
+                    raise serializers.ValidationError({
+                        'status': 'You can only complete a task after reviewing it.'
+                    })
 
         return attrs
 

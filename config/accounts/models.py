@@ -2,7 +2,6 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser, UserManager
 from clients.models import Client
 
-
 class CustomUserManager(UserManager):
 
     def create_superuser(self, username, email=None, password=None, **extra_fields):

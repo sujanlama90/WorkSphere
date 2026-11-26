@@ -1,5 +1,6 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+
 class TaskPermission(BasePermission):
 
     def has_permission(self, request, view):
@@ -14,9 +15,21 @@ class TaskPermission(BasePermission):
             return True
 
         if request.user.role == 'EMPLOYEE':
-            return view.action in ['list', 'retrieve', 'partial_update']
+            return view.action in [
+                'list',
+                'retrieve',
+                'partial_update'
+            ]
+
+        # Client can only view tasks
+        if request.user.role == 'CLIENT':
+            return view.action in [
+                'list',
+                'retrieve'
+            ]
 
         return False
+
     def has_object_permission(self, request, view, obj):
 
         user = request.user
@@ -44,7 +57,19 @@ class TaskPermission(BasePermission):
 
             return False
 
+        # Client can only view tasks of own company
+        if user.role == 'CLIENT':
+
+            if request.method not in SAFE_METHODS:
+                return False
+
+            return (
+                user.client is not None
+                and obj.project.client == user.client
+            )
+
         return False
+
 
 class CommentPermission(BasePermission):
 
