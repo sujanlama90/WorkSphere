@@ -1,16 +1,26 @@
-# React + Vite
+# WorkSphere frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React and Vite frontend for the WorkSphere Django REST API.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Start the Django API from `config/` at `http://127.0.0.1:8000`.
+2. Install frontend dependencies with `npm install` in this directory.
+3. Optionally copy `.env.example` to `.env.local` and set `VITE_API_URL` to your API root. The default is `http://127.0.0.1:8000/api/`.
+4. Run `npm run dev` in this directory and open the URL printed by Vite.
 
-## React Compiler
+The Django server must allow the Vite development origin through its CORS settings. The frontend stores the SimpleJWT access and refresh tokens in local storage and sends the access token as a bearer token.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Included areas
 
-## Expanding the ESLint configuration
+- Public landing page, registration, login, profile and password change
+- Role-aware overview, navigation and user administration
+- Client, project and project-request workflows
+- Tasks, discussions, attachments and activity history
+- Support tickets, replies and attachments
+- Notifications, time tracking, CSV reports and audit log
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Validation
+
+- `npm run lint`
+- `npm run build`
